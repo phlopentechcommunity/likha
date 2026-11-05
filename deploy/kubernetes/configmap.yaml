@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: likha-config
+  namespace: likha
+data:
+  NODE_ENV: production
+  LIKHA_PUBLIC_URL: https://likha.phlopentech.org
+  GITHUB_OWNER: phlopentech
+  GITHUB_WORKFLOW_REPO: likha-workflows
+  GITHUB_WORKFLOW_FILE: project-build.yaml
+  GITHUB_DEFAULT_REF: main
+  GHCR_OWNER: phlopentech

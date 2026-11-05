@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: likha-web
+  namespace: likha
+spec:
+  selector: {app: likha-web}
+  ports: [{name: http, port: 80, targetPort: http}]

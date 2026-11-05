@@ -1,0 +1,2 @@
+Install complete. Configure ingress.enabled and ingress.hosts for external access.
+Check workload: kubectl get deploy,svc -l app.kubernetes.io/instance={{ .Release.Name }}

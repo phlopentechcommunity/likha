@@ -1,0 +1,35 @@
+replicaCount: 2
+image:
+  repository: __IMAGE__
+  tag: "__TAG__"
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 3000
+containerPort: 3000
+resources:
+  requests: { cpu: 100m, memory: 128Mi }
+  limits: { cpu: 500m, memory: 512Mi }
+securityContext:
+  runAsNonRoot: true
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities: { drop: ["ALL"] }
+podSecurityContext:
+  seccompProfile: { type: RuntimeDefault }
+serviceAccount:
+  create: true
+  name: ""
+ingress:
+  enabled: false
+  className: cilium
+  annotations: {}
+  hosts: []
+  tls: []
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 75

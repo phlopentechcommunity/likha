@@ -1,0 +1,20 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: likha
+  namespace: likha
+spec:
+  ingressClassName: cilium
+  tls:
+    - hosts: [likha.phlopentech.org]
+      secretName: likha-tls
+  rules:
+    - host: likha.phlopentech.org
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: likha-web
+                port: {number: 80}

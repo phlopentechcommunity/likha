@@ -1,0 +1,172 @@
+name: LIKHA Project Build
+on:
+  workflow_dispatch:
+    inputs:
+      project_id: { required: true, type: string }
+      source_url: { required: true, type: string }
+      source_ref: { required: true, type: string }
+      project_name: { required: true, type: string }
+      visibility: { required: true, type: string }
+      template_kind: { required: true, type: string }
+      callback_url: { required: true, type: string }
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+  security-events: write
+
+concurrency:
+  group: likha-${{ inputs.project_id }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}
+          path: likha-control
+
+      - name: Clone target project (GitHub, GitLab or Gitea)
+        env:
+          SOURCE_URL: ${{ inputs.source_url }}
+          SOURCE_REF: ${{ inputs.source_ref }}
+          SOURCE_GIT_USERNAME: ${{ secrets.SOURCE_GIT_USERNAME }}
+          SOURCE_READ_TOKEN: ${{ secrets.SOURCE_READ_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          export GIT_TERMINAL_PROMPT=0
+          if [[ -n "${SOURCE_READ_TOKEN:-}" ]]; then
+            cat > "$RUNNER_TEMP/git-askpass" <<'ASKPASS'
+          #!/bin/sh
+          case "$1" in
+            *Username*) printf '%s\\n' "$SOURCE_GIT_USERNAME" ;;
+            *Password*) printf '%s\\n' "$SOURCE_READ_TOKEN" ;;
+            *) exit 1 ;;
+          esac
+          ASKPASS
+            chmod 700 "$RUNNER_TEMP/git-askpass"
+            export GIT_ASKPASS="$RUNNER_TEMP/git-askpass"
+          fi
+          git clone --depth 1 --branch "$SOURCE_REF" -- "$SOURCE_URL" source
+
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Detect project and image metadata
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          NAME="$(echo '${{ inputs.project_name }}' | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g')"
+          OWNER="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "image=ghcr.io/$OWNER/$NAME" >> "$GITHUB_OUTPUT"
+          test -f source/Dockerfile || {
+            echo "::error::No Dockerfile found. Add a reviewed Dockerfile or configure an approved buildpack."
+            exit 1
+          }
+
+      - name: Build and push immutable image
+        uses: docker/build-push-action@v6
+        with:
+          context: source
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.image }}:${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=${{ inputs.source_url }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
+      - name: Scan image with Trivy
+        uses: aquasecurity/trivy-action@0.30.0
+        with:
+          image-ref: ${{ steps.meta.outputs.image }}:${{ github.sha }}
+          format: json
+          output: trivy-image.json
+          vuln-type: os,library
+          severity: CRITICAL,HIGH,MEDIUM,LOW
+
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ steps.meta.outputs.image }}:${{ github.sha }}
+          format: cyclonedx-json
+          output-file: sbom.cdx.json
+
+      - name: Install Helm and chart tools
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.17.3
+
+      - name: Generate chart from approved template
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          KIND="$(printf '%s' '${{ inputs.template_kind }}' | tr '[:lower:]' '[:upper:]')"
+          cp -R "likha-control/chart-templates/${KIND}" out/chart
+          sed -i "s/__CHART_NAME__/${{ steps.meta.outputs.name }}/g" out/chart/Chart.yaml
+          sed -i "s|__IMAGE__|${{ steps.meta.outputs.image }}|g" out/chart/values.yaml
+          sed -i "s|__TAG__|${{ github.sha }}|g" out/chart/values.yaml
+          helm lint out/chart
+          helm template "${{ steps.meta.outputs.name }}" out/chart > rendered.yaml
+          npx --yes @cyclonedx/cyclonedx-npm --version >/dev/null 2>&1 || true
+
+      - name: Validate Kubernetes manifests
+        uses: docker://ghcr.io/yannh/kubeconform:v0.6.7
+        with:
+          args: "-strict -summary rendered.yaml"
+
+      - name: Scan chart and rendered manifests
+        uses: aquasecurity/trivy-action@0.30.0
+        with:
+          scan-type: config
+          scan-ref: out/chart
+          format: json
+          output: trivy-config.json
+          severity: CRITICAL,HIGH,MEDIUM,LOW
+
+      - name: Package and publish chart
+        env:
+          OWNER: ${{ github.repository_owner }}
+          CHART: ${{ steps.meta.outputs.name }}
+        run: |
+          set -euo pipefail
+          helm package out/chart
+          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
+          helm push "${CHART}-"*.tgz "oci://ghcr.io/${OWNER}/charts"
+
+      - name: Upload reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: likha-reports-${{ inputs.project_id }}
+          path: |
+            trivy-image.json
+            trivy-config.json
+            sbom.cdx.json
+            rendered.yaml
+            *.tgz
+          retention-days: 90
+
+      - name: Post scan summary to LIKHA
+        if: always()
+        env:
+          CALLBACK_URL: ${{ inputs.callback_url }}
+          CALLBACK_TOKEN: ${{ secrets.LIKHA_CALLBACK_TOKEN }}
+          PROJECT_ID: ${{ inputs.project_id }}
+          IMAGE: ${{ steps.meta.outputs.image }}
+          COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          test -f trivy-image.json || exit 0
+          python3 likha-control/scripts/report_to_likha.py
