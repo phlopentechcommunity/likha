@@ -9,5 +9,6 @@ const parsed=schema.safeParse(await req.json());if(!parsed.success)return NextRe
 const d=parsed.data;const project=await prisma.project.findUnique({where:{id:d.projectId}});if(!project)return NextResponse.json({error:"Unknown project"},{status:404});
 const result=await prisma.$transaction(async tx=>{const release=await tx.release.create({data:{projectId:d.projectId,version:d.chartVersion,imageRef:d.imageRef,imageDigest:d.imageDigest,chartRef:d.chartRef,commitSha:d.commitSha}});
 const scan=await tx.securityScan.create({data:{projectId:d.projectId,releaseId:release.id,status:d.scanStatus,criticalCount:d.criticalCount,highCount:d.highCount,mediumCount:d.mediumCount,lowCount:d.lowCount,scannerVersion:d.scannerVersion,
-vulnerabilities:{create:d.vulnerabilities.map(v=>({...v,fixedVersion:v.fixedVersion??null,primaryUrl:v.primaryUrl??null}))}}});
+vulnerabilities:{create:d.vulnerabilities.map(v=>({cveId:v.id,packageName:v.packageName,installedVersion:v.installedVersion,
+fixedVersion:v.fixedVersion??null,severity:v.severity,primaryUrl:v.primaryUrl??null}))}}});
 return {release,scan};});return NextResponse.json(result,{status:201});}

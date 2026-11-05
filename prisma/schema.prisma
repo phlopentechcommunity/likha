@@ -1,81 +1,133 @@
-generator client { provider = "prisma-client-js" }
+generator client {
+  provider = "prisma-client-js"
+}
+
 datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
 }
-enum Provider { GITHUB GITLAB GITEA }
-enum Visibility { PUBLIC PRIVATE }
-enum ChartStrategy { AUTO TEMPLATE HYBRID }
-enum TemplateKind { WEB API WORKER CRONJOB STATEFUL }
-enum BuildStatus { QUEUED DISPATCHED RUNNING SUCCEEDED FAILED CANCELLED }
-enum ScanStatus { PASSED WARNING FAILED }
-enum Severity { CRITICAL HIGH MEDIUM LOW UNKNOWN }
+
+enum Provider {
+  GITHUB
+  GITLAB
+  GITEA
+}
+
+enum Visibility {
+  PUBLIC
+  PRIVATE
+}
+
+enum ChartStrategy {
+  AUTO
+  TEMPLATE
+  HYBRID
+}
+
+enum TemplateKind {
+  WEB
+  API
+  WORKER
+  CRONJOB
+  STATEFUL
+}
+
+enum BuildStatus {
+  QUEUED
+  DISPATCHED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
+enum ScanStatus {
+  PASSED
+  WARNING
+  FAILED
+}
+
+enum Severity {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+  UNKNOWN
+}
+
 model Project {
- id String @id @default(cuid())
- name String @unique
- sourceUrl String
- sourceProvider Provider
- sourceRef String @default("main")
- visibility Visibility @default(PRIVATE)
- chartStrategy ChartStrategy @default(HYBRID)
- templateKind TemplateKind @default(WEB)
- createdAt DateTime @default(now())
- updatedAt DateTime @updatedAt
- builds Build[]
- releases Release[]
- scans SecurityScan[]
+  id             String         @id @default(cuid())
+  name           String         @unique
+  sourceUrl      String
+  sourceProvider Provider
+  sourceRef      String         @default("main")
+  visibility     Visibility     @default(PRIVATE)
+  chartStrategy  ChartStrategy  @default(HYBRID)
+  templateKind   TemplateKind   @default(WEB)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  builds         Build[]
+  releases       Release[]
+  scans          SecurityScan[]
 }
+
 model Build {
- id String @id @default(cuid())
- projectId String
- project Project @relation(fields:[projectId],references:[id],onDelete:Cascade)
- provider String
- status BuildStatus @default(QUEUED)
- workflowRunId String?
- commitSha String?
- logUrl String?
- createdAt DateTime @default(now())
- updatedAt DateTime @updatedAt
+  id            String      @id @default(cuid())
+  projectId     String
+  project       Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  provider      String
+  status        BuildStatus @default(QUEUED)
+  workflowRunId String?
+  commitSha     String?
+  logUrl        String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
 }
+
 model Release {
- id String @id @default(cuid())
- projectId String
- project Project @relation(fields:[projectId],references:[id],onDelete:Cascade)
- version String
- imageRef String?
- imageDigest String?
- chartRef String?
- commitSha String
- createdAt DateTime @default(now())
- scans SecurityScan[]
- @@unique([projectId,version])
+  id          String         @id @default(cuid())
+  projectId   String
+  project     Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  version     String
+  imageRef    String?
+  imageDigest String?
+  chartRef    String?
+  commitSha   String
+  createdAt   DateTime       @default(now())
+  scans       SecurityScan[]
+
+  @@unique([projectId, version])
 }
+
 model SecurityScan {
- id String @id @default(cuid())
- projectId String
- project Project @relation(fields:[projectId],references:[id],onDelete:Cascade)
- releaseId String?
- release Release? @relation(fields:[releaseId],references:[id],onDelete:SetNull)
- status ScanStatus
- criticalCount Int @default(0)
- highCount Int @default(0)
- mediumCount Int @default(0)
- lowCount Int @default(0)
- scannerVersion String
- createdAt DateTime @default(now())
- vulnerabilities Vulnerability[]
+  id              String          @id @default(cuid())
+  projectId       String
+  project         Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  releaseId       String?
+  release         Release?        @relation(fields: [releaseId], references: [id], onDelete: SetNull)
+  status          ScanStatus
+  criticalCount   Int             @default(0)
+  highCount       Int             @default(0)
+  mediumCount     Int             @default(0)
+  lowCount        Int             @default(0)
+  scannerVersion  String
+  createdAt       DateTime        @default(now())
+  vulnerabilities Vulnerability[]
 }
+
 model Vulnerability {
- id String @id @default(cuid())
- scanId String
- scan SecurityScan @relation(fields:[scanId],references:[id],onDelete:Cascade)
- cveId String
- packageName String
- installedVersion String
- fixedVersion String?
- severity Severity
- primaryUrl String?
- createdAt DateTime @default(now())
- @@index([cveId])
+  id               String       @id @default(cuid())
+  scanId           String
+  scan             SecurityScan @relation(fields: [scanId], references: [id], onDelete: Cascade)
+  cveId            String
+  packageName      String
+  installedVersion String
+  fixedVersion     String?
+  fixedAt          DateTime?
+  severity         Severity
+  primaryUrl       String?
+  createdAt        DateTime     @default(now())
+
+  @@index([cveId])
 }

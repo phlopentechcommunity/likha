@@ -20,10 +20,10 @@ npm ci
 npx prisma generate
 ```
 
-For a new development database:
+The initial schema migration is committed in `prisma/migrations/`. For a new development database:
 
 ```bash
-npx prisma migrate dev --name init
+npx prisma migrate dev
 ```
 
 For production, commit migration files and run this command as a controlled deployment step (or a one-off CI job) using `DIRECT_URL`:
