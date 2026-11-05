@@ -38,9 +38,9 @@ Requirements: Node.js 22+ and npm. For hosted deployments use Neon PostgreSQL an
 
 ```bash
 cp .env.example .env
-npm install
+npm ci
 npx prisma generate
-npx prisma migrate dev --name init
+npx prisma migrate dev
 npm run dev
 ```
 

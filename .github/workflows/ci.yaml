@@ -11,5 +11,10 @@ jobs:
         with: {node-version: "22", cache: npm}
       - run: npm ci
       - run: npx prisma validate
+        env:
+          DATABASE_URL: postgresql://user:pass@localhost:5432/likha?schema=public
+          DIRECT_URL: postgresql://user:pass@localhost:5432/likha?schema=public
+      - run: npx prisma generate
+      - run: npm run lint
       - run: npx tsc --noEmit
       - run: npm run build
